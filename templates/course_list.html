@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+
+
+{% block content %}
+<div>
+    <a href="/create-course/?id={{ id }}">Создать курс</a>
+    <br>
+    {% for item in objects_list %}
+    <li>
+        {{ item.name }} <span><a href="/copy-course/?name={{ item.name }}">Скопировать</a></span>
+    </li>
+    {% endfor %}
+</div>
+{% endblock %}

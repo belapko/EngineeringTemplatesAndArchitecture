@@ -1,0 +1,13 @@
+{% extends 'base.html' %}
+
+{% block content %}
+
+    <div>
+        <h1>Создание курса для категории "{{ name }}"</h1>
+        <form method="post">
+            <input type="text" name="name" placeholder="Название">
+            <button type="submit">Сохранить и вернуться к списку курсов</button>
+        </form>
+    </div>
+
+{% endblock %}
