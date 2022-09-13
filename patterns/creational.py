@@ -1,141 +1,185 @@
 import copy
+from behavioral import ConsoleWriter, Subject
+from unit_of_work import DomainObject
+import sqlite3
+
+from patterns.data_mappers import StudentMapper
 
 
 class User:
-	pass
+    def __init__(self, name):
+        self.name = name
 
 
 class Teacher(User):
-	pass
+    pass
+
+
+class Student(User, DomainObject):
+    def __init__(self, name):
+        self.courses = []
+        super(Student, self).__init__(name)
 
 
 class UserFactory:
-	types = {
-		'user': User,
-		'teacher': Teacher,
-	}
+    types = {
+        'student': Student,
+        'teacher': Teacher,
+    }
 
-	@classmethod
-	def create(cls, type):
-		return cls.types[type]()
+    @classmethod
+    def create(cls, type, name):
+        return cls.types[type](name)
 
 
 class CoursePrototype:
-	def clone(self):
-		return copy.deepcopy(self)
+    def clone(self):
+        return copy.deepcopy(self)
 
 
-class Course(CoursePrototype):
-	def __init__(self, name, category, duration):
-		self.name = name
-		self.category = category
-		self.duration = duration
-		self.category.courses.append(self)
+class Course(CoursePrototype, Subject):
+    def __init__(self, name, category):
+        self.name = name
+        self.category = category
+        self.category.courses.append(self)
+        self.students = []
+        super(Course, self).__init__()
 
+    def __getitem__(self, item):
+        return self.students[item]
 
-class OnlineCourse(Course):
-	pass
+    def add_student(self, student: Student):
+        self.students.append(student)
+        student.courses.append(self)
+        self.notify()
 
 
 class OfflineCourse(Course):
-	pass
+    pass
 
 
-class CourseFactory:
-	types = {
-		'online': OnlineCourse,
-		'offline': OfflineCourse,
-	}
-
-	@classmethod
-	def create(cls, type, name, category, duration):
-		return cls.types[type](name, category, duration)
+class OnlineCourse(Course):
+    pass
 
 
 class Category:
-	auto_id = 0
+    auto_id = 0
 
-	def __init__(self, name, category, duration):
-		self.id = Category.auto_id
-		Category.auto_id += 1
-		self.name = name
-		self.category = category
-		self.duration = duration
-		self.courses = []
+    def __init__(self, name, category):
+        self.id = Category.auto_id
+        Category.auto_id += 1
+        self.name = name
+        self.category = category
+        self.courses = []
 
-	def course_count(self):
-		result = len(self.courses)
-		if self.category:
-			result += self.category.course_count()
-		return result
+    def course_count(self):
+        result = len(self.courses)
+        if self.category:
+            result += self.category.course_count()
+        return result
+
+
+class CourseFactory:
+    types = {
+        'offlinecourse': OfflineCourse,
+        'onlinecourse': OnlineCourse,
+    }
+
+    @classmethod
+    def create(cls, type, name, category):
+        return cls.types[type](name, category)
 
 
 class Engine:
-	def __init__(self):
-		self.teachers = []
-		self.users = []
-		self.courses = []
-		self.categories = []
+    def __init__(self):
+        self.teachers = []
+        self.students = []
+        self.courses = []
+        self.categories = []
 
-	@staticmethod
-	def create_user(type):
-		return UserFactory.create(type)
+    @staticmethod
+    def create_user(type, name):
+        return UserFactory.create(type, name)
 
-	@staticmethod
-	def create_category(name, duration, category=None):
-		return Category(name, category, duration)
+    @staticmethod
+    def create_category(name, category=None):
+        return Category(name, category)
 
-	def find_category_by_id(self, id):
-		for item in self.categories:
-			print('item', item.id)
-			if item.id == id:
-				return item
-		raise Exception(f'Нет категории с таким id: {id}')
+    def find_category_by_id(self, id):
+        for item in self.categories:
+            if item.id == id:
+                return item
+        raise Exception(f'category with id={id} does not exists')
 
-	@staticmethod
-	def create_course(type, name, category, duration):
-		return CourseFactory.create(type, name, category, duration)
+    @staticmethod
+    def create_course(type, name, category):
+        return CourseFactory.create(type, name, category)
 
-	def get_course(self, name):
-		for item in self.courses:
-			if item.name == name:
-				return item
-		return None
+    def get_course_by_name(self, name) -> Course | None:
+        for item in self.courses:
+            if item.name == name:
+                return item
+        return None
 
-	@staticmethod
-	def decode_value(data):
-		new_data = {}
-		for key, str_value in data.items():
-			while '%' in str_value:
-				idx = str_value.index('%')
-				hex_part = str_value[idx: idx + 3]
-				str_value = str_value.replace(hex_part, bytes.fromhex(hex_part[1:]).decode('utf-8'))
-			new_data[key] = str_value
-		return new_data
+    def get_student_by_name(self, name) -> Student | None:
+        for item in self.students:
+            if item.name == name:
+                return item
+        return None
+
+    @staticmethod
+    def decode_value(data):
+        new_data = {}
+        for key, str_value in data.items():
+            while '%' in str_value:
+                idx = str_value.index('%')
+                hex_part = str_value[idx: idx + 3]
+                str_value = str_value.replace(hex_part, bytes.fromhex(hex_part[1:]).decode('utf-8'))
+            new_data[key] = str_value
+        return new_data
 
 
-class SingletonByName(type):
-	def __init__(cls, name, bases, attrs, **kwargs):
-		super(SingletonByName, cls).__init__(name, bases, attrs)
-		cls.__instance = {}
+class Singleton(type):
+    def __init__(cls, name, bases, attrs, **kwargs):
+        super(Singleton, cls).__init__(name, bases, attrs)
+        cls.__instance = {}
 
-	def __call__(cls, *args, **kwargs):
-		name = None
-		if args:
-			name = args[0]
-		if kwargs:
-			name = kwargs['name']
-		if name in cls.__instance:
-			return cls.__instance[name]
-		else:
-			cls.__instance[name] = super().__call__(*args, **kwargs)
-			return cls.__instance[name]
+    def __call__(cls, *args, **kwargs):
+        if args:
+            name = args[0]
+        else:
+            name = kwargs['name']
 
-class Logger(metaclass=SingletonByName):
+        if name in cls.__instance:
+            return cls.__instance[name]
+        else:
+            cls.__instance[name] = super(Singleton, cls).__call__(*args, **kwargs)
+            return cls.__instance[name]
 
-	def __init__(self, name):
-		self.name = name
 
-	@staticmethod
-	def log(text):
-		print('log: ', text)
+class Logger(metaclass=Singleton):
+    def __init__(self, name, writer=ConsoleWriter()):
+        self.name = name
+        self.writer = writer
+
+    def log(self, text):
+        text = f'logger ::: {text}'
+        self.writer.write(text)
+
+
+connection = sqlite3.connect('patterns.sqlite')
+
+
+class MapperRegistry:
+    mappers = {
+        'student': StudentMapper,
+    }
+
+    @staticmethod
+    def get_mapper(obj):
+        if isinstance(obj, Student):
+            return StudentMapper(connection)
+
+    @staticmethod
+    def get_current_mapper(name):
+        return MapperRegistry.mappers[name](connection)
